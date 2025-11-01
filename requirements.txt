@@ -1,7 +1,7 @@
 psutil
-pywin32
+python-xlib
 opencv-python
-Pillow
+pillow
+moviepy
 soundcard
 numpy
-moviepy
