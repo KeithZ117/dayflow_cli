@@ -2,7 +2,7 @@ import argparse
 import sys
 from typing import Optional
 
-from files_api import (
+from .files import (
     get_file_metadata,
     list_files,
     metadata_pretty,

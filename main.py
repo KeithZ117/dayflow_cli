@@ -52,7 +52,7 @@ def start_logging_and_recording():
         # --- Auto upload and analyze video ---
         try:
             if 'video_path' in locals() and video_path:
-                from files_api import upload_file, wait_until_active, analyze_file_resource
+                from src.api.files import upload_file, wait_until_active, analyze_file_resource
 
                 print("\nUploading recording to Gemini Files API...")
                 meta = upload_file(video_path, display_name=os.path.basename(video_path))
