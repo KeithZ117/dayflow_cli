@@ -48,42 +48,40 @@ class ScreenRecorder:
         return webcam
 
     def _record_audio(self):
-        """Records system audio and microphone to a WAV file."""
+        """Records system (loopback) audio to a WAV file."""
         if not sc:
             return
 
         try:
             loopback_mic = sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
-            default_mic = sc.default_microphone()
 
             chunk_size = SAMPLE_RATE // 10
 
             with loopback_mic.recorder(samplerate=SAMPLE_RATE, blocksize=chunk_size) as loopback_rec, \
-                 default_mic.recorder(samplerate=SAMPLE_RATE, blocksize=chunk_size) as mic_rec, \
                  wave.open(TEMP_AUDIO_FILENAME, 'wb') as wav_file:
 
-                logging.info("[Audio] Recording audio... (System + Mic)")
+                logging.info("[Audio] Recording audio... (System Only)")
                 wav_file.setnchannels(2)
                 wav_file.setsampwidth(2)
                 wav_file.setframerate(SAMPLE_RATE)
 
                 while not self.stop_event.is_set():
                     try:
-                        loopback_data = loopback_rec.record(numframes=chunk_size)
-                        mic_data = mic_rec.record(numframes=chunk_size)
+                        data = loopback_rec.record(numframes=chunk_size)
+                        if len(data) == 0:
+                            continue
 
-                        min_len = min(len(loopback_data), len(mic_data))
-                        if min_len == 0: continue
+                        # Ensure stereo: expand mono, limit >2ch to first two
+                        if getattr(data, 'ndim', 1) == 1:
+                            data = data.reshape(-1, 1)
+                        if data.shape[1] == 1:
+                            data = np.repeat(data, 2, axis=1)
+                        elif data.shape[1] > 2:
+                            data = data[:, :2]
 
-                        mixed_data = (loopback_data[:min_len] + mic_data[:min_len]) / 2.0
-
-                        if mixed_data.shape[1] == 1:
-                            mixed_data = np.repeat(mixed_data, 2, axis=1)
-
-                        pcm_data = (np.clip(mixed_data, -1.0, 1.0) * 32767).astype(np.int16)
+                        pcm_data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
                         wav_file.writeframes(pcm_data.tobytes())
-
-                    except Exception as chunk_error:
+                    except Exception:
                         continue
         except Exception as e:
             logging.error(f"[Audio] Error: {e}. Audio will not be recorded.")
