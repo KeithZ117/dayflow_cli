@@ -10,11 +10,10 @@ import logging
 import cv2
 import numpy as np
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
-from moviepy.audio.io.AudioFileClip import AudioFileClip
 from PIL import ImageGrab
 
-from src.config import (CRF, FPS, PRESET, RESOLUTION_SCALE, WEBCAM_MARGIN,
-                        WEBCAM_SCALE, SAMPLE_RATE, TEMP_AUDIO_FILENAME, OUTPUT_FILENAME)
+from src.config import (CRF, FPS, PRESET, WEBCAM_MARGIN,
+                        WEBCAM_SCALE)
 
 try:
     import soundcard as sc
@@ -48,44 +47,8 @@ class ScreenRecorder:
         return webcam
 
     def _record_audio(self):
-        """Records system (loopback) audio to a WAV file."""
-        if not sc:
-            return
-
-        try:
-            loopback_mic = sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
-
-            chunk_size = SAMPLE_RATE // 10
-
-            with loopback_mic.recorder(samplerate=SAMPLE_RATE, blocksize=chunk_size) as loopback_rec, \
-                 wave.open(TEMP_AUDIO_FILENAME, 'wb') as wav_file:
-
-                logging.info("[Audio] Recording audio... (System Only)")
-                wav_file.setnchannels(2)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(SAMPLE_RATE)
-
-                while not self.stop_event.is_set():
-                    try:
-                        data = loopback_rec.record(numframes=chunk_size)
-                        if len(data) == 0:
-                            continue
-
-                        # Ensure stereo: expand mono, limit >2ch to first two
-                        if getattr(data, 'ndim', 1) == 1:
-                            data = data.reshape(-1, 1)
-                        if data.shape[1] == 1:
-                            data = np.repeat(data, 2, axis=1)
-                        elif data.shape[1] > 2:
-                            data = data[:, :2]
-
-                        pcm_data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
-                        wav_file.writeframes(pcm_data.tobytes())
-                    except Exception:
-                        continue
-        except Exception as e:
-            logging.error(f"[Audio] Error: {e}. Audio will not be recorded.")
-        logging.info("[Audio] Recording stopped.")
+        """Audio recording disabled for MVP."""
+        return
 
     def record_frame(self):
         """Captures a single frame of the screen and webcam."""
@@ -94,10 +57,12 @@ class ScreenRecorder:
 
         screen_frame_pil = ImageGrab.grab()
 
+        # Resize to 480p (height=480), keep aspect ratio; ensure even width for encoder
         width, height = screen_frame_pil.size
-        new_width = int(width * RESOLUTION_SCALE)
-        new_height = int(height * RESOLUTION_SCALE)
-        resized_screen_pil = screen_frame_pil.resize((new_width, new_height))
+        target_height = 480
+        new_width = int(width * (target_height / height))
+        new_width -= new_width % 2  # even width for codec compatibility
+        resized_screen_pil = screen_frame_pil.resize((new_width, target_height))
 
         screen_frame_bgr = cv2.cvtColor(np.array(resized_screen_pil), cv2.COLOR_RGB2BGR)
 
@@ -130,9 +95,7 @@ class ScreenRecorder:
         self.is_recording = True
         self.stop_event.clear()
 
-        if sc:
-            self.audio_thread = threading.Thread(target=self._record_audio)
-            self.audio_thread.start()
+        # Audio disabled in MVP: no audio thread
 
         logging.info("Recording started.")
 
@@ -151,22 +114,31 @@ class ScreenRecorder:
         logging.info("Recording stopped.")
 
     def save_recording(self):
-        logging.info("Encoding video... this may take a moment.")
+        logging.info("Encoding video (H.265, 480p)... this may take a moment.")
         if not self.video_frames:
             logging.warning("No frames to save.")
-            return
+            return None
+
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        output_dir = os.path.join("output", "videos")
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, f"dayflow_{timestamp}.mp4")
 
         try:
             clip = ImageSequenceClip(self.video_frames, fps=FPS)
-            if os.path.exists(TEMP_AUDIO_FILENAME):
-                audio_clip = AudioFileClip(TEMP_AUDIO_FILENAME)
-                final_clip = clip.with_audio(audio_clip)
-                final_clip.write_videofile(OUTPUT_FILENAME, codec="libx264", audio_codec="aac", ffmpeg_params=['-crf', CRF, '-preset', PRESET])
-                os.remove(TEMP_AUDIO_FILENAME)
-            else:
-                clip.write_videofile(OUTPUT_FILENAME, codec="libx264", ffmpeg_params=['-crf', CRF, '-preset', PRESET])
+            # Write video only, H.265 codec
+            clip.write_videofile(
+                output_filename,
+                codec="libx265",
+                audio=False,
+                ffmpeg_params=['-crf', CRF, '-preset', PRESET]
+            )
 
-            logging.info(f"\nRecording saved to {OUTPUT_FILENAME}")
+            logging.info(f"\nRecording saved to {output_filename}")
+            # Remember the last output path and return it for callers
+            self.output_filename = output_filename
+            return output_filename
 
         except Exception as e:
             logging.error(f"\nError during final encoding: {e}")
+            return None
