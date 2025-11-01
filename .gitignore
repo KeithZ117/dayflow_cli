@@ -9,6 +9,7 @@ virtualenv/
 venv/
 .conda/
 .nonadmin
+.env
 
 # Windows DLL files
 *.dll
