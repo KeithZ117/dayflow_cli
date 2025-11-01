@@ -1,0 +1,7 @@
+psutil
+pywin32
+opencv-python
+Pillow
+soundcard
+numpy
+moviepy

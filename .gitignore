@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+virtualenv/
+venv/
+.conda/
+.nonadmin
+
+# Windows DLL files
+*.dll
+
+# Logs & Data
+*.log
+*.csv
+temp_audio.wav
+
+# Output files
+output.mp4
